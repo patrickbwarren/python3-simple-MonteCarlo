@@ -83,7 +83,7 @@ def brute_force():
     energy, virial = 0, 0
     for i, j in pairs:
         Δr = pos[j] - pos[i]
-        Δr = Δr - np.where(Δr>esby2, es, 0) + np.where(Δr<-esby2, es, 0)
+        Δr = Δr - np.where(Δr > esby2, es, 0) + np.where(Δr < -esby2, es, 0)
         rsq = np.sum(Δr**2)
         if rsq < 1:
             r = np.sqrt(rsq)
@@ -101,7 +101,7 @@ def energy_pressure():
             for j in contents[tuple(neighbour_cell)]:
                 if i < j:
                     Δr = pos[j] - pos_i
-                    Δr = Δr - np.where(Δr>esby2, es, 0) + np.where(Δr<-esby2, es, 0)
+                    Δr = Δr - np.where(Δr > esby2, es, 0) + np.where(Δr < -esby2, es, 0)
                     rsq = np.sum(Δr**2)
                     if rsq < 1:
                         r = np.sqrt(rsq)
@@ -116,7 +116,7 @@ def part_energy(i, cell, pos_i):
         for j in contents[tuple(neighbour_cell)]:
             if i != j:
                 Δr = pos[j] - pos_i
-                Δr = Δr - np.where(Δr>esby2, es, 0) + np.where(Δr<-esby2, es, 0)
+                Δr = Δr - np.where(Δr > esby2, es, 0) + np.where(Δr < -esby2, es, 0)
                 rsq = np.sum(Δr**2)
                 if rsq < 1:
                     r = np.sqrt(rsq)
@@ -188,12 +188,12 @@ with open(ep_file, 'w') as f:
 if args.verbose > 1:
     test_energy()
 
-run_opts = [f'--header={args.header}', f'--seed={args.seed}',
+run_opts = [sys.argv[0], f'--header={args.header}', f'--seed={args.seed}',
             f'--nequil={nequil}', f'--nsamp={nsamp}', f'--nmove={nmove}',
             f'--A={A}', f'--rho={rho}', f'--es={es}']
 
 reports = ['command_line: ' + ' '.join(sys.argv),
-           'full_command: ' + sys.argv[0] + ' ' + ' '.join(run_opts),
+           'full_command: ' + ' '.join(run_opts),
            'data collected for: ep']
 
 if args.verbose:
