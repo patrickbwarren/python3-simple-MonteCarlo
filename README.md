@@ -26,7 +26,7 @@ along with this program.  If not, see
 
 ### Copyright
 
-This program is copyright &copy; 2023-2026 Patrick B Warren (STFC).  
+This program is copyright &copy; 2026 Patrick B Warren (STFC).
 
 ### Contact
 
