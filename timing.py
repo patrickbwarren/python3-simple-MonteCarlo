@@ -49,6 +49,6 @@ with open(dag_log) as f:
 result = f'{dag_log}: total run time = {timedelta(seconds=total)}, ' \
          f'mean run time ({count} jobs) = {timedelta(seconds=int(total/count))}'
 
-print(result)
+print('#', result)
 
 # End of script
