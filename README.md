@@ -1,11 +1,12 @@
-## Simple Monte-Carlo code for many-body dissipative particle dynamics
+## Simple Monte-Carlo code for dissipative particle dynamics
 
 _Current version:_ v0.0 - work in progress
 
 ### Summary
 
-Implements a simple Monte-Carlo code for many-body dissipative
-particle dynamics (MBDPD; DPD).
+Implements a simple Monte-Carlo code for dissipative particle dynamics
+(DPD), with applications to many-body DPD (MBDPD).  Currently a work
+in progress.
 
 
 ### Copying
