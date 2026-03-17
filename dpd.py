@@ -58,6 +58,7 @@ nmove = eval('int(%s)' % kM_replace(args.nmove))
 nequil = args.nequil
 
 pos = rng.uniform(0, es, size=(npart, 3)) # initialise particle positions
+wld = np.zeros(npart) # will contain the weighted local densities
 
 ncell = int(es) # number of cells along one axis
 cell_size = es / ncell # cell size
@@ -74,7 +75,7 @@ neighbours = [np.array(x, dtype=int) for x in product([-1, 0, 1], [-1, 0, 1], [-
 pairs = [(i, j) for i, j in product(range(npart), range(npart)) if i < j]
 
 def brute_force():
-    energy, virial = 0, 0
+    energy, virial, wgt = 0, 0, 0
     for i, j in pairs:
         Δr = pos[j] - pos[i]
         Δr = Δr - np.where(Δr > esby2, es, 0) + np.where(Δr < -esby2, es, 0)
@@ -83,9 +84,11 @@ def brute_force():
             r = np.sqrt(rsq)
             energy += (A/2)*(1-r)**2
             virial += A*r*(1-r)
-    return 3*rho/2 + energy/vol, rho + virial/(3*vol)
+            wgt += 1/4*(1-r)**2 # note normalisation
+    return 3*rho/2 + energy/vol, rho + virial/(3*vol), 2*wgt/npart
 
-def energy_pressure():
+def energy_pressure_mean_wld():
+    wld[:] = 0 # has side effect of building the wld array
     energy, virial = 0, 0
     for i in range(npart):
         pos_i = pos[i]
@@ -101,7 +104,10 @@ def energy_pressure():
                         r = np.sqrt(rsq)
                         energy += (A/2)*(1-r)**2
                         virial += A*r*(1-r)
-    return 3*rho/2 + energy/vol, rho + virial/(3*vol)
+                        wgt = 1/4*(1-r)**2 # note normalisation
+                        wld[i] += wgt
+                        wld[j] += wgt
+    return 3*rho/2 + energy/vol, rho + virial/(3*vol), np.mean(wld)
 
 def part_energy(i, cell, pos_i):
     energy = 0
@@ -125,8 +131,8 @@ def tot_part_energy(): # test of above
     return energy/vol
 
 def test_energy():
-    print('cell list methods  =\t{}\t{}'.format(*energy_pressure()))
-    print('brute force method =\t{}\t{}'.format(*brute_force()))
+    print('cell list methods  =\t{}\t{}\t{}'.format(*energy_pressure_mean_wld()))
+    print('brute force method =\t{}\t{}\t{}'.format(*brute_force()))
     print('tot part energy    =\t{}'.format(tot_part_energy()))
 
 if args.verbose > 1:
@@ -151,11 +157,11 @@ for sweep in range(nequil): # do a number of sweeps of nmove trial moves
             pos[i] = new_pos
             contents[tuple(old_cell)].remove(i)
             contents[tuple(new_cell)].add(i)
-    (e, p), a = energy_pressure(), naccept/nmove
+    (e, p, w), a = energy_pressure_mean_wld(), naccept/nmove
     if args.verbose:
-        print('equilibration:\t%i\t%g\t%g\t%g' % (sweep, e, p, a))
+        print('equilibration: {:3d} {:0.5f} {:0.5f} {:0.5f} {:0.5f}'.format(sweep, e, p, w, a))
 
-final_stats = e, p, a
+final_stats = e, p, w, a
 
 if args.verbose > 1:
     test_energy()
@@ -164,6 +170,7 @@ if args.verbose > 1:
 
 nbins, rmax = args.nbins, args.rmax
 int_gr_bins = np.zeros(1+nbins, dtype=int) # integer here since counting 'hits'
+nr_bins = np.zeros(1+nbins) # for the wld, presumed already computed
 Δg = rmax / nbins
 
 for i, j in pairs:
@@ -172,33 +179,41 @@ for i, j in pairs:
     r = np.sqrt(np.sum(Δr**2))
     ig = min(nbins, int(r/Δg)) # catch all pairs
     int_gr_bins[ig] += 1 # final bin is a dustbin for pairs not within range
+    nr_bins[ig] += 0.5*(wld[i] + wld[j])
 
 norm = np.sum(int_gr_bins) # include dustbin at the end, should be |pairs| × # samples
 ig = np.arange(nbins)
 r = (ig + 0.5) * Δg # midpoint
 vshell = 4*np.pi/3 * (3*ig**2 + 3*ig + 1) * Δg**3 # volume of shell around midpoint
-g = int_gr_bins[:-1] * vol / (norm * vshell) # exclude 'dustbin' at end
+gr = int_gr_bins[:-1] * vol / (norm * vshell) # exclude 'dustbin' at end
+nr = np.divide(nr_bins[:-1], int_gr_bins[:-1], where=(int_gr_bins[:-1] > 0)) # avoid divid by zero
 
 if args.header is not None:
 
     ep_file = '%s__%d_ep.dat' % (args.header, pid)
     gr_file = '%s__%d_gr.dat' % (args.header, pid)
+    nr_file = '%s__%d_nr.dat' % (args.header, pid)
     log_file = '%s.log' % args.header
 
-    e, p, a = final_stats
+    e, p, w, a = final_stats
 
     with open(ep_file, 'w') as f:
         f.write('%g\te\n' % e)
         f.write('%g\tp\n' % p)
+        f.write('%g\tw\n' % w)
         f.write('%g\ta\n' % a)
 
     with open(gr_file, 'w') as f:
         for i in range(nbins):
-            f.write('%g\tgr__%g\n' % (g[i], r[i]))
+            f.write('%g\tgr__%g\n' % (gr[i], r[i]))
+
+    with open(nr_file, 'w') as f:
+        for i in range(nbins):
+            f.write('%g\tnr__%g\n' % (nr[i], r[i]))
 
 else:
 
-    print('final stats:\t\t%g\t%g\t%g' % final_stats)
+    print('final stats:       {:0.5f} {:0.5f} {:0.5f} {:0.5f}'.format(*final_stats))
 
 # make final reports
 
@@ -207,7 +222,7 @@ run_opts = [f'--header={args.header}', f'--seed={args.seed}',
             f'--A={A}', f'--npart={npart}', f'--es={es}']
 
 reports = ['opts: ' + ' '.join(run_opts),
-           'data collected for: ep, gr']
+           'data collected for: ep, gr, nr']
 
 if args.verbose > 1:
     for line in reports:
