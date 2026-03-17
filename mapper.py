@@ -131,8 +131,10 @@ else: # create a DAGMan master job
     opts = ['--clean' if args.clean else '--no-clean', 
             '--prepend' if args.prepend else '--no-prepend',
             f'--wipe={args.wipe}', f'--njobs={njobs}']
+
+    opts = ' '.join(opts)
     
-    script = f"{args.executable} reducer.py {header} {' '.join(opts)}"
+    script = f'{args.executable} reducer.py {header} {opts}'
 
     lines = [f'JOB A {condor_job}',
              f'SCRIPT POST A {script}']
