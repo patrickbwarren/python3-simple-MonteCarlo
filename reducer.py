@@ -21,7 +21,7 @@
 
 """Reduce outputs from jobs run on a condor cluster
 
-Eg: ./reducer.py --header=mytest --njobs=8
+Eg: ./reducer.py mytest --njobs=8
 """
 
 import os
@@ -45,7 +45,6 @@ parser = argparse.ArgumentParser(__doc__)
 parser.add_argument('header', help='the name of the output and job files')
 parser.add_argument('--njobs', default=None, type=int, help='the number of condor jobs')
 parser.add_argument('--wipe', default='out,err', help='file extensions for cleaning, default out,err')
-parser.add_argument('--data-types', default=None, help='over-ride list of data types')
 add_bool_arg(parser, 'overwrite', default=False, help='overwrite data files')
 add_bool_arg(parser, 'clean', default=False, help='clean up intermediate files')
 add_bool_arg(parser, 'prepend', default=True, help='prepend mapper call to log file')
@@ -54,17 +53,20 @@ args = parser.parse_args()
 
 # Extract the list of data types from the log file (or override).
 # In the log file, look for a line like
-# ... data collected for ... : type1, type2, type3,...
+# ... reduce data for ... : type1, type2, type3,...
+# ... concatenate data for ... : type1, type2, type3,...
 # split on the ':', take the second half, and split again on ',' then
 # strip off any white space to recover a python list of strings (data_types)
 
-if args.data_types:
-    data_types = args.data_types.split(',')
-else:
-    with open(args.header + '.log') as f:
-        for line in f:
-            if 'data collected for' in line:
-                data_types = [s.strip() for s in line.split(':')[1].split(',')]
+reduce_data = []
+concat_data = []
+
+with open(args.header + '.log') as f:
+    for line in f:
+        if 'reduce' in line:
+            reduce_data = [s.strip() for s in line.split(':')[1].split(',')]
+        if 'concat' in line:
+            concat_data = [s.strip() for s in line.split(':')[1].split(',')]
 
 # Now reduce each data type, using numpy to do the statistics
 
@@ -78,25 +80,45 @@ def process(data_file):
             else:
                 data[tag] = [val]
 
-for data_type in data_types:
-    data = {}
-    if args.njobs:
-        for k in range(args.njobs):
-            process(f'{args.header}__{k}_{data_type}.dat')
-    else:
-        process(f'{args.header}_{data_type}.dat')
-    data_file = f'{args.header}_{data_type}.dat'
-    if not args.overwrite and os.path.exists(data_file):
-        print(f'{data_file} exists, use --overwrite option to overwrite')
-    else:
-        with open(data_file, 'w') as f:
-            for tag in data:
-                arr = np.array([float(v) for v in data[tag]])
-                mean, var, npt = np.mean(arr), np.var(arr, ddof=1), np.size(arr)
-                sem = np.sqrt(var / npt) # standard error in the mean
-                f.write('%g\t%g\t%s\t%d\n' % (mean, sem, tag, npt))
-        if args.verbose:
-            print(f'{data_type} > {data_file}')
+if reduce_data:
+    for code in reduce_data:
+        data = {}
+        if args.njobs:
+            for k in range(args.njobs):
+                process(f'{args.header}__{k}_{code}.dat')
+        else:
+            process(f'{args.header}_{code}.dat')
+        data_file = f'{args.header}_{code}.dat'
+        if not args.overwrite and os.path.exists(data_file):
+            print(f'{data_file} exists, use --overwrite option to overwrite')
+        else:
+            with open(data_file, 'w') as f:
+                for tag in data:
+                    arr = np.array([float(v) for v in data[tag]])
+                    mean, var, npt = np.mean(arr), np.var(arr, ddof=1), np.size(arr)
+                    sem = np.sqrt(var / npt) # standard error in the mean
+                    f.write('%g\t%g\t%s\t%d\n' % (mean, sem, tag, npt))
+            if args.verbose:
+                print(f'{args.header}__*_{code}.dat > {data_file}')
+
+if concat_data:
+    for code in concat_data:
+        file_list = []
+        if args.njobs:
+            for k in range(args.njobs):
+                file_list.append(f'{args.header}__{k}_{code}.dat')
+        else:
+            file_list.append(f'{args.header}_{code}.dat')
+        data_file = f'{args.header}_{code}.dat'
+        if not args.overwrite and os.path.exists(data_file):
+            print(f'{data_file} exists, use --overwrite option to overwrite')
+        else:
+            with open(data_file, 'w') as f1:
+                for file_name in file_list:
+                    with open(file_name, 'r') as f2:
+                        f1.write(f2.read())
+            if args.verbose:
+                print(f'{args.header}__*_{code}.dat > {data_file}')
 
 # Prepend the mapper command line extracted from the first line of condor job description, based on
 # https://stackoverflow.com/questions/4454298/prepend-a-line-to-an-existing-file-in-python
@@ -127,7 +149,7 @@ if args.clean:
         if args.wipe:
             for extension in args.wipe.split(','):
                 os.remove(f'{args.header}__{k}.{extension}')
-        for data_type in data_types:
-            os.remove(f'{args.header}__{k}_{data_type}.dat')
+        for data in reduce_data+concat_data:
+            os.remove(f'{args.header}__{k}_{data}.dat')
 
 # End of script

@@ -54,7 +54,6 @@ parser.add_argument('--fast', action='store_true', help='run with Mips > min mip
 parser.add_argument('--min-mips', type=int, default=20000, help='min mips for fast option, default 20000')
 parser.add_argument('--modules', default=None, help='supporting module(s), default None')
 parser.add_argument('--extensions', default='so,py,pm', help='file extensions for module(s), default so,py,pm')
-parser.add_argument('--executable', default=sys.executable, help=f'executable to run script, if not {sys.executable}')
 parser.add_argument('--transfers', default=None, help='additional files to transfer, default None')
 parser.add_argument('--wipe', default='out,err', help='file extensions for cleaning, default out,err')
 add_bool_arg(parser, 'reduce', default=True, help='use DAGMan to reduce the output')
@@ -134,7 +133,7 @@ else: # create a DAGMan master job
 
     opts = ' '.join(opts)
     
-    script = f'{args.executable} reducer.py {header} {opts}'
+    script = f'./reducer.py {header} {opts}'
 
     lines = [f'JOB A {condor_job}',
              f'SCRIPT POST A {script}']

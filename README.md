@@ -9,6 +9,11 @@ Implements a simple Monte-Carlo code for dissipative particle dynamics
 in progress.
 
 
+### Reference values
+
+* energy density = 13.635(5)
+* pressure = 23.653(2)
+
 ### Copying
 
 This program is free software: you can redistribute it and/or modify

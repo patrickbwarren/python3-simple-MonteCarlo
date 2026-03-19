@@ -52,9 +52,9 @@ rng = np.random.default_rng(seed=args.seed).spawn(njobs)[pid] # select a local R
 A, rho, ΔR = args.A, args.rho, args.delta
 es, esby2, vol = args.es, args.es/2, args.es**3
 
-npart = eval('int(%s)' % kM_replace(args.npart))
+npart = eval('int({})'.format(kM_replace(args.npart)))
 rho = args.rho if args.npart is None else npart/vol
-nmove = eval('int(%s)' % kM_replace(args.nmove))
+nmove = eval('int({})'.format(kM_replace(args.nmove)))
 nequil = args.nequil
 
 pos = rng.uniform(0, es, size=(npart, 3)) # initialise particle positions
@@ -159,76 +159,42 @@ for sweep in range(nequil): # do a number of sweeps of nmove trial moves
             contents[tuple(new_cell)].add(i)
     (e, p, w), a = energy_pressure_mean_wld(), naccept/nmove
     if args.verbose:
-        print('equilibration: {:3d} {:0.5f} {:0.5f} {:0.5f} {:0.5f}'.format(sweep, e, p, w, a))
+        print('equilibration: {:3d} {:0.5f} {:0.5f}'.format(sweep, e, a))
 
-final_stats = e, p, w, a
+final_stats = (e, p, w, a)
 
 if args.verbose > 1:
     test_energy()
-
-# measure pair distribution function at this point
-
-nbins, rmax = args.nbins, args.rmax
-int_gr_bins = np.zeros(1+nbins, dtype=int) # integer here since counting 'hits'
-nr_bins = np.zeros(1+nbins) # for the wld, presumed already computed
-Δg = rmax / nbins
-
-for i, j in pairs:
-    Δr = pos[j] - pos[i]
-    Δr = Δr - np.where(Δr > esby2, es, 0) + np.where(Δr < -esby2, es, 0)
-    r = np.sqrt(np.sum(Δr**2))
-    ig = min(nbins, int(r/Δg)) # catch all pairs
-    int_gr_bins[ig] += 1 # final bin is a dustbin for pairs not within range
-    nr_bins[ig] += 0.5*(wld[i] + wld[j])
-
-norm = np.sum(int_gr_bins) # include dustbin at the end, should be |pairs| × # samples
-ig = np.arange(nbins)
-r = (ig + 0.5) * Δg # midpoint
-vshell = 4*np.pi/3 * (3*ig**2 + 3*ig + 1) * Δg**3 # volume of shell around midpoint
-gr = int_gr_bins[:-1] * vol / (norm * vshell) # exclude 'dustbin' at end
-nr = np.divide(nr_bins[:-1], int_gr_bins[:-1], where=(int_gr_bins[:-1] > 0)) # avoid divid by zero
-
-if args.header is not None:
-
-    ep_file = '%s__%d_ep.dat' % (args.header, pid)
-    gr_file = '%s__%d_gr.dat' % (args.header, pid)
-    nr_file = '%s__%d_nr.dat' % (args.header, pid)
-    log_file = '%s.log' % args.header
-
-    e, p, w, a = final_stats
-
-    with open(ep_file, 'w') as f:
-        f.write('%g\te\n' % e)
-        f.write('%g\tp\n' % p)
-        f.write('%g\tw\n' % w)
-        f.write('%g\ta\n' % a)
-
-    with open(gr_file, 'w') as f:
-        for i in range(nbins):
-            f.write('%g\tgr__%g\n' % (gr[i], r[i]))
-
-    with open(nr_file, 'w') as f:
-        for i in range(nbins):
-            f.write('%g\tnr__%g\n' % (nr[i], r[i]))
-
-else:
-
-    print('final stats:       {:0.5f} {:0.5f} {:0.5f} {:0.5f}'.format(*final_stats))
-
-# make final reports
 
 run_opts = [f'--header={args.header}', f'--seed={args.seed}',
             f'--nequil={nequil}', f'--nmove={nmove}',
             f'--A={A}', f'--npart={npart}', f'--es={es}']
 
-reports = ['opts: ' + ' '.join(run_opts),
-           'data collected for: ep, gr, nr']
-
 if args.verbose > 1:
-    for line in reports:
-        print(line)
+    print('opts:', ' '.join(run_opts))
 
-if args.header is not None and args.process == 0:
-    with open(log_file, 'w') as f:
-        for line in reports:
-            f.write('# ' + line + '\n')
+if args.header is not None:
+
+    dd, ff, ss = '{:d}', '{:0.8f}', '{:s}'
+
+    frame_file = f'{args.header}__{pid:d}_frame.dat'
+    fmt_string = '\t'.join([dd, dd, ff, ff, ff]) + '\n'
+    with open(frame_file, 'w') as f:
+        for i in range(npart):
+            x, y, z = pos[i]
+            f.write(fmt_string.format(pid, i, x, y, z))
+
+    stats_file = f'{args.header}__{pid:d}_stats.dat'
+    fmt_string = '\t'.join([ff, ss]) + '\n'
+    with open(stats_file, 'w') as f:
+        for i, code in enumerate('epwa'):
+            f.write(fmt_string.format(final_stats[i], code))
+
+    if args.process == 0:
+        log_file = f'{args.header}.log'
+        with open(log_file, 'w') as f:
+            f.write('# opts: ' + ' '.join(run_opts) + '\n')
+            f.write('# reduce data for: stats\n')
+            f.write('# concatenate data for: frame\n')
+
+# end of code
