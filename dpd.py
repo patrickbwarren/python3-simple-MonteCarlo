@@ -43,6 +43,7 @@ parser.add_argument('--nequil', default=10, type=int, help='number of equilibrat
 parser.add_argument('--delta', default=0.2, type=float, help='trial displacement, default 0.2')
 parser.add_argument('--rmax', default=4.0, type=float, help='max radius for rdf, default 4.0')
 parser.add_argument('--nbins', default=80, type=int, help='number of bins in rdf, default 80')
+parser.add_argument('--frame', action='store_true', help='write out frame data')
 parser.add_argument('-v', '--verbose', action='count', default=0, help='increasing verbosity')
 args = parser.parse_args()
 
@@ -166,6 +167,28 @@ final_stats = (e, p, w, a)
 if args.verbose > 1:
     test_energy()
 
+# measure pair distribution functions at this point
+
+nbins, Δg = args.nbins, args.rmax / args.nbins
+
+count = np.zeros(nbins, dtype=int) # integer here since counting 'hits'
+sumnr = np.zeros(nbins) # for the wld, presumed already computed
+
+i = np.arange(nbins)
+rmid = (i + 0.5) * Δg # midpoint
+vshell = 4*np.pi/3 * (3*i**2 + 3*i + 1) * Δg**3 # volume of shell around midpoint
+
+for i, j in pairs:
+    Δr = pos[j] - pos[i]
+    Δr = Δr - np.where(Δr > esby2, es, 0) + np.where(Δr < -esby2, es, 0)
+    r = np.sqrt(np.sum(Δr**2))
+    k = int(r/Δg)
+    if k < nbins:
+        count[k] += 1
+        sumnr[k] += 0.5*(wld[i] + wld[j])
+
+gr = count * vol / (len(pairs) * vshell)
+
 run_opts = [f'--header={args.header}', f'--seed={args.seed}',
             f'--nequil={nequil}', f'--nmove={nmove}',
             f'--A={A}', f'--npart={npart}', f'--es={es}']
@@ -177,24 +200,39 @@ if args.header is not None:
 
     dd, ff, ss = '{:d}', '{:0.8f}', '{:s}'
 
-    frame_file = f'{args.header}__{pid:d}_frame.dat'
-    fmt_string = '\t'.join([dd, dd, ff, ff, ff]) + '\n'
-    with open(frame_file, 'w') as f:
-        for i in range(npart):
-            x, y, z = pos[i]
-            f.write(fmt_string.format(pid, i, x, y, z))
-
     stats_file = f'{args.header}__{pid:d}_stats.dat'
     fmt_string = '\t'.join([ff, ss]) + '\n'
     with open(stats_file, 'w') as f:
         for i, code in enumerate('epwa'):
             f.write(fmt_string.format(final_stats[i], code))
 
+    rdfs_file = f'{args.header}__{pid:d}_rdfs.dat'
+    fmt_string = '\t'.join([dd, dd, ff, dd, ff, ff]) + '\n'
+    with open(rdfs_file, 'w') as f:
+        for i in range(nbins):
+            f.write(fmt_string.format(pid, i, rmid[i], count[i], sumnr[i], gr[i]))
+
+    files = [stats_file, rdfs_file]
+    concats = ['rdfs']
+
+    if args.frame:
+        frame_file = f'{args.header}__{pid:d}_frame.dat'
+        fmt_string = '\t'.join([dd, dd, ff, ff, ff]) + '\n'
+        with open(frame_file, 'w') as f:
+            for i in range(npart):
+                x, y, z = pos[i]
+                f.write(fmt_string.format(pid, i, x, y, z))
+        files.append(frame_file)
+        concats.append('frame')
+
     if args.process == 0:
         log_file = f'{args.header}.log'
         with open(log_file, 'w') as f:
             f.write('# opts: ' + ' '.join(run_opts) + '\n')
             f.write('# reduce data for: stats\n')
-            f.write('# concatenate data for: frame\n')
+            f.write('# concatenate data for: ' + ', '.join(concats) + '\n')
+
+if args.verbose:
+    print('data >', ', '.join(files))
 
 # end of code

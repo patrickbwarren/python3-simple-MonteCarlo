@@ -11,8 +11,8 @@ in progress.
 
 ### Reference values
 
-* energy density = 13.635(5)
-* pressure = 23.653(2)
+* energy density = 4.5 + 13.635(5) = 18.135(5)
+* pressure = 3 + 20.653(2) = 23.653(2)
 
 ### Copying
 
