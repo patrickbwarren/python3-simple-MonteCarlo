@@ -43,7 +43,6 @@ parser.add_argument('--nequil', default=10, type=int, help='number of equilibrat
 parser.add_argument('--delta', default=0.2, type=float, help='trial displacement, default 0.2')
 parser.add_argument('--rmax', default=4.0, type=float, help='max radius for rdf, default 4.0')
 parser.add_argument('--nbins', default=80, type=int, help='number of bins in rdf, default 80')
-parser.add_argument('--frame', action='store_true', help='write out frame data')
 parser.add_argument('-v', '--verbose', action='count', default=0, help='increasing verbosity')
 args = parser.parse_args()
 
@@ -162,10 +161,20 @@ for sweep in range(nequil): # do a number of sweeps of nmove trial moves
     if args.verbose:
         print('equilibration: {:3d} {:0.5f} {:0.5f}'.format(sweep, e, a))
 
-final_stats = (e, p, w, a)
+final_stats = [e, p, w, a]
 
 if args.verbose > 1:
     test_energy()
+
+# Widom insertion for chemical potential
+
+def even_parity(cell): # used to implement checkboard pattern
+    return (cell[0] + cell[1] + cell[2]) % 2 == 0
+
+origin_pos = rng.uniform(0, 1, size=3) # random insertion point in first cell
+insert_eng = np.array([part_energy(npart, cell, origin_pos+np.array(cell)) for cell in contents if even_parity(cell)])
+mu = -np.log(vol*np.mean(np.exp(-insert_eng))/(npart+1)) # insert_eng collects the insertion energies
+final_stats.append(mu)
 
 # measure pair distribution functions at this point
 
@@ -203,7 +212,7 @@ if args.header is not None:
     stats_file = f'{args.header}__{pid:d}_stats.dat'
     fmt_string = '\t'.join([ff, ss]) + '\n'
     with open(stats_file, 'w') as f:
-        for i, code in enumerate('epwa'):
+        for i, code in enumerate('epwam'):
             f.write(fmt_string.format(final_stats[i], code))
 
     rdfs_file = f'{args.header}__{pid:d}_rdfs.dat'
@@ -214,16 +223,6 @@ if args.header is not None:
 
     files = [stats_file, rdfs_file]
     concats = ['rdfs']
-
-    if args.frame:
-        frame_file = f'{args.header}__{pid:d}_frame.dat'
-        fmt_string = '\t'.join([dd, dd, ff, ff, ff]) + '\n'
-        with open(frame_file, 'w') as f:
-            for i in range(npart):
-                x, y, z = pos[i]
-                f.write(fmt_string.format(pid, i, x, y, z))
-        files.append(frame_file)
-        concats.append('frame')
 
     if args.process == 0:
         log_file = f'{args.header}.log'
