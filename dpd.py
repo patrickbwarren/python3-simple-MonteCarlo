@@ -176,7 +176,7 @@ insert_eng = np.array([part_energy(npart, cell, origin_pos+np.array(cell)) for c
 mu = -np.log(vol*np.mean(np.exp(-insert_eng))/(npart+1)) # insert_eng collects the insertion energies
 final_stats.append(mu)
 
-# measure pair distribution functions at this point
+# pair distribution functions (totals)
 
 nbins, Δg = args.nbins, args.rmax / args.nbins
 
