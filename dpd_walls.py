@@ -24,6 +24,7 @@
 
 import argparse
 import numpy as np
+from numpy import pi as π
 from itertools import product
 
 def eval_kM_replace(s):
@@ -55,12 +56,14 @@ parser.add_argument('--njobs', default=1, type=int, help='the number of condor j
 parser.add_argument('-e', '--es', default=10.0, type=float, help='box size, default 10.0')
 parser.add_argument('-r', '--rho', default=3.0, type=float, help='density, default 3.0')
 parser.add_argument('-A', '--A', default=25.0, type=float, help='repulsion amplitude, default 25.0')
+parser.add_argument('--Awall', default='0.0', help='wall repulsion amplitude, default 0.0')
 parser.add_argument('--npart', default='rho*vol', help='number of particles, default computed')
 parser.add_argument('--nmove', default='npart', help='number of MC moves per sweep, default npart')
 parser.add_argument('--nequil', default='10', help='number of equilibration sweeps, default 10')
 parser.add_argument('--delta', default=0.2, type=float, help='trial displacement, default 0.2')
 parser.add_argument('--nbins', default=80, type=int, help='number of bins in density profile, default 40')
 parser.add_bool_arg('--walls', short_opt='-w', default=True, help='include walls')
+parser.add_bool_arg('--uniform', short_opt='-u', default=False, help='uniform wall model')
 parser.add_argument('-v', '--verbose', action='count', default=0, help='increasing verbosity')
 args = parser.parse_args()
 
@@ -68,6 +71,9 @@ pid, njobs = args.process, args.njobs
 rng = np.random.default_rng(seed=args.seed).spawn(njobs)[pid] # select a local RNG stream
 
 A, rho, ΔR = args.A, args.rho, args.delta
+
+Awall = eval(args.Awall) # catch things like A*rho, used in uniform wall model
+
 es, esby2 = args.es, args.es/2
 
 zlo, zhi = (0.5, es-0.5) if args.walls else (0, es)
@@ -161,6 +167,28 @@ def test_energy():
 if args.verbose > 1:
     test_energy()
 
+def vanilla_wall_energy(z):
+    energy = 0
+    if z < zlo + 1:
+        zz = z - zlo
+        energy = (Awall/2)*(1-zz)**2
+    elif z > zhi - 1:
+        zz = zhi - z
+        energy = (Awall/2)*(1-zz)**2
+    return energy
+
+def uniform_wall_energy(z):
+    energy = 0
+    if z < zlo + 1:
+        zz = z - zlo
+        energy = (π*Awall/60)*(1-zz)**4*(2+3*zz)
+    elif z > zhi - 1:
+        zz = zhi - z
+        energy = (π*Awall/60)*(1-zz)**4*(2+3*zz)
+    return energy
+
+wall_energy = uniform_wall_energy if args.uniform else vanilla_wall_energy
+
 # This is the actual Monte-Carlo algorithm
 
 for sweep in range(nequil): # do a number of sweeps of nmove trial moves
@@ -171,12 +199,12 @@ for sweep in range(nequil): # do a number of sweeps of nmove trial moves
     for i, disp, prob in zip(parts, disps, probs):
         old_pos = pos[i]
         old_cell = (old_pos/cell_size).astype(int)
-        old_energy = part_energy(i, old_cell, old_pos)
+        old_energy = part_energy(i, old_cell, old_pos) + wall_energy(old_pos[2])
         new_pos = (old_pos + disp) % es
         if new_pos[2] < zlo or new_pos[2] > zhi: # reject if falls outside walls
             continue
         new_cell = (new_pos/cell_size).astype(int)
-        new_energy = part_energy(i, new_cell, new_pos)
+        new_energy = part_energy(i, new_cell, new_pos) + wall_energy(new_pos[2])
         if (prob < np.exp(-(new_energy-old_energy))): # acceptance criterion
             naccept += 1
             pos[i] = new_pos
@@ -186,7 +214,11 @@ for sweep in range(nequil): # do a number of sweeps of nmove trial moves
     if args.verbose:
         print('equilibration: {:3d} {:0.5f} {:0.5f}'.format(sweep, e, a))
 
-stats = dict(energy=e, pxx=p[0], pyy=p[1], pzz=p[2], deltap=(p[2]-0.5*(p[0]+p[1])), accrat=a)
+pxx, pyy, pzz = p # diagonal components of pressure tensor
+
+gamma = 0.5*(zhi-zlo)*(pzz - 0.5*(pxx+pyy)) # surface tension
+
+stats = dict(energy=e, pxx=pxx, pyy=pyy, pzz=pzz, gamma=gamma, accrat=a)
 
 if args.verbose > 1:
     test_energy()
@@ -228,7 +260,7 @@ if args.header is not None:
         with open(log_file, 'w') as f:
             f.write('# opts: ' + ' '.join(run_opts) + '\n')
             f.write('# reduce data for: stats, zprof\n')
-            f.write(f'# derived parameters: npart = {npart}, vol = {vol}, rho = {npart/vol}')
+            f.write(f'# derived parameters: npart = {npart}, vol = {vol}, rho = {npart/vol}\n')
 
     if args.verbose:
         print('data >', ', '.join(files))
