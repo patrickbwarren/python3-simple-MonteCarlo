@@ -26,10 +26,28 @@ import argparse
 import numpy as np
 from itertools import product
 
-def kM_replace(s):
-    return s.replace('k', '*1e3').replace('M', '*1e6')
+def eval_kM_replace(s):
+    return eval('int({})'.format(s.replace('k', '*1e3').replace('M', '*1e6')))
+    
+# Extend the ArgumentParser class to be able to add boolean options, adapted from
+# https://stackoverflow.com/questions/15008758/parsing-boolean-values-with-argparse
 
-parser = argparse.ArgumentParser(description=__doc__)
+class ExtendedArgumentParser(argparse.ArgumentParser):
+
+    def add_bool_arg(self, long_opt, short_opt=None, default=False, help=None):
+        '''Add a mutually exclusive --opt, --no-opt group with optional short opt'''
+        opt = long_opt.removeprefix('--')
+        group = self.add_mutually_exclusive_group(required=False)
+        help_string = None if not help else help if not default else f'{help}, default'
+        if short_opt:    
+            group.add_argument(short_opt, f'--{opt}', dest=opt, action='store_true', help=help_string)
+        else:
+            group.add_argument(f'--{opt}', dest=opt, action='store_true', help=help_string)
+        help_string = None if not help else f"don't {help}" if default else f"don't {help}, default"        
+        group.add_argument(f'--no-{opt}', dest=opt, action='store_false', help=help_string)
+        self.set_defaults(**{opt:default})
+
+parser = argparse.ExtendedArgumentParser(description=__doc__)
 parser.add_argument('--header', default=None, help='set the name of the output files')
 parser.add_argument('--seed', default=12345, type=int, help='the RNG seed, default 12345')
 parser.add_argument('--process', default=0, type=int, help='process number, default 0')
@@ -41,7 +59,8 @@ parser.add_argument('--npart', default='rho*vol', help='number of particles, def
 parser.add_argument('--nmove', default='npart', help='number of MC moves per sweep, default npart')
 parser.add_argument('--nequil', default=10, type=int, help='number of equilibration sweeps, default 10')
 parser.add_argument('--delta', default=0.2, type=float, help='trial displacement, default 0.2')
-parser.add_argument('--nbins', default=40, type=int, help='number of bins in density profile, default 40')
+parser.add_argument('--nbins', default=80, type=int, help='number of bins in density profile, default 40')
+parser.add_bool_arg('--walls', short_opt='-w', default=True, help='include walls')
 parser.add_argument('-v', '--verbose', action='count', default=0, help='increasing verbosity')
 args = parser.parse_args()
 
@@ -49,51 +68,54 @@ pid, njobs = args.process, args.njobs
 rng = np.random.default_rng(seed=args.seed).spawn(njobs)[pid] # select a local RNG stream
 
 A, rho, ΔR = args.A, args.rho, args.delta
-es, esby2, vol = args.es, args.es/2, args.es**3
-zlo, zhi = 0.5, es-0.5
+es, esby2 = args.es, args.es/2
 
-npart = eval('int({})'.format(kM_replace(args.npart)))
-rho = args.rho if args.npart is None else npart/vol
-nmove = eval('int({})'.format(kM_replace(args.nmove)))
-nequil = args.nequil
+zlo, zhi = (0.5, es-0.5) if args.walls else (0, es)
 
-pos = rng.uniform(0, es, size=(npart, 3)) # initialise particle positions
-z = pos[:, 2]
-pos = pos[(z > zlo) & (z < zhi), :] # keep only particles between walls
-npart = pos.shape[0] # recount
-vol = es**2*(zhi-zlo) # recalculate
-rho = npart / vol # ditto
+vol = es**2*(zhi-zlo) # volume between walls
+
+npart = eval_kM_replace(args.npart)
+nmove = eval_kM_replace(args.nmove)
+nequil = eval_kM_replace(args.nequil)
+
+pos = rng.uniform(zlo, zhi, size=(npart, 3)) # initialise particle positions between walls
 
 ncell = int(es) # number of cells along one axis
 cell_size = es / ncell # cell size
 cell_coord = list(range(ncell)) # list of coords along one axis
-all_cell_coords = product(cell_coord, cell_coord, cell_coord) # coords of all cells, as tuples
-contents = dict([(cell, set()) for cell in all_cell_coords]) # empty cell sets, indexed by cell coords
+cell_coord_triple = [cell_coord] * 3 # three such lists
+all_cells = product(*cell_coord_triple) # iterator for coords of all cells, as tuples (triples)
+contents = dict([(cell, set()) for cell in all_cells]) # empty cell sets, indexed by cell coords
 
-for i in range(npart): # go through all particles
+box = list(range(npart)) # list of particles
+
+for i in box: # go through all particles
     cell = (pos[i]/cell_size).astype(int) # calculate cell coordinates
     contents[tuple(cell)].add(i) # add particle to set of particles in cell
 
-neighbours = [np.array(x, dtype=int) for x in product([-1, 0, 1], [-1, 0, 1], [-1, 0, 1])]
-
-pairs = [(i, j) for i, j in product(range(npart), range(npart)) if i < j]
+neighbour_coord = [-1, 0, 1] # neighbour offsets along one axis
+neighbour_coord_triple = [neighbour_coord] * 3 # three such offsets
+all_neighbours = product(*neighbour_coord_triple) # iterator for neighbour offset triples
+neighbours = [np.array(x, dtype=int) for x in all_neighbours] # convert to a list of numpy integer arrays
 
 def brute_force():
     energy, virial = 0, 0
-    for i, j in pairs:
-        Δr = pos[j] - pos[i]
-        Δr = Δr - np.where(Δr > esby2, es, 0) + np.where(Δr < -esby2, es, 0)
-        rsq = np.sum(Δr**2)
-        if rsq < 1:
-            r = np.sqrt(rsq)
-            energy += (A/2)*(1-r)**2
-            virial += A*r*(1-r)
-    return 3*rho/2 + energy/vol, rho + virial/(3*vol)
+    for i in box:
+        for j in box:
+            if i < j:
+                Δr = pos[j] - pos[i]
+                Δr = Δr - np.where(Δr > esby2, es, 0) + np.where(Δr < -esby2, es, 0)
+                rsq = np.sum(Δr**2)
+                if rsq < 1:
+                    r = np.sqrt(rsq)
+                    energy += (A/2)*(1-r)**2
+                    virial += A*r*(1-r)
+    return 3*npart/(2*vol) + energy/vol, npart/vol + virial/(3*vol)
 
 def energy_pressure():
     energy = 0
     virial = np.zeros(3)
-    for i in range(npart):
+    for i in box:
         pos_i = pos[i]
         cell = (pos_i/cell_size).astype(int)
         for neighbour in neighbours:
@@ -107,7 +129,7 @@ def energy_pressure():
                         r = np.sqrt(rsq)
                         energy += (A/2)*(1-r)**2
                         virial += Δr**2 / r * A*(1-r) # resolves into components
-    return 3*rho/2 + energy/vol, rho + virial/vol
+    return 3*npart/(2*vol) + energy/vol, npart/vol + virial/vol
 
 def part_energy(i, cell, pos_i):
     energy = 0
@@ -125,7 +147,7 @@ def part_energy(i, cell, pos_i):
 
 def tot_part_energy(): # test of above
     energy = 3*npart/2
-    for i in range(npart):
+    for i in box:
         cell = (pos[i]/cell_size).astype(int) # calculate cell coordinates
         energy += 0.5*part_energy(i, cell, pos[i])
     return energy/vol
@@ -210,6 +232,7 @@ if args.header is not None:
         with open(log_file, 'w') as f:
             f.write('# opts: ' + ' '.join(run_opts) + '\n')
             f.write('# reduce data for: stats, zprof\n')
+            f.write(f'# derived parameters: npart = {npart}, vol = {vol}, rho = {npart/vol}')
 
 if args.verbose:
     print('data >', ', '.join(files))

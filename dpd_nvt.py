@@ -26,8 +26,8 @@ import argparse
 import numpy as np
 from itertools import product
 
-def kM_replace(s):
-    return s.replace('k', '*1e3').replace('M', '*1e6')
+def eval_kM_replace(s):
+    return eval('int({})'.format(s.replace('k', '*1e3').replace('M', '*1e6')))
 
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('--header', default=None, help='set the name of the output files')
@@ -52,10 +52,9 @@ rng = np.random.default_rng(seed=args.seed).spawn(njobs)[pid] # select a local R
 A, rho, ΔR = args.A, args.rho, args.delta
 es, esby2, vol = args.es, args.es/2, args.es**3
 
-npart = eval('int({})'.format(kM_replace(args.npart)))
-rho = args.rho if args.npart is None else npart/vol
-nmove = eval('int({})'.format(kM_replace(args.nmove)))
-nequil = args.nequil
+npart = eval_kM_replace(args.npart)
+nmove = eval_kM_replace(args.nmove)
+nequil = eval_kM_replace(args.nequil)
 
 pos = rng.uniform(0, es, size=(npart, 3)) # initialise particle positions
 wld = np.zeros(npart) # will contain the weighted local densities
@@ -63,34 +62,40 @@ wld = np.zeros(npart) # will contain the weighted local densities
 ncell = int(es) # number of cells along one axis
 cell_size = es / ncell # cell size
 cell_coord = list(range(ncell)) # list of coords along one axis
-all_cell_coords = product(cell_coord, cell_coord, cell_coord) # coords of all cells, as tuples
-contents = dict([(cell, set()) for cell in all_cell_coords]) # empty cell sets, indexed by cell coords
+cell_coord_triple = [cell_coord] * 3 # three such lists
+all_cells = product(*cell_coord_triple) # iterator for coords of all cells, as tuples (triples)
+contents = dict([(cell, set()) for cell in all_cells]) # empty cell sets, indexed by cell coords
 
-for i in range(npart): # go through all particles
+box = list(range(npart)) # list of particles
+
+for i in box: # go through all particles
     cell = (pos[i]/cell_size).astype(int) # calculate cell coordinates
     contents[tuple(cell)].add(i) # add particle to set of particles in cell
 
-neighbours = [np.array(x, dtype=int) for x in product([-1, 0, 1], [-1, 0, 1], [-1, 0, 1])]
-
-pairs = [(i, j) for i, j in product(range(npart), range(npart)) if i < j]
+neighbour_coord = [-1, 0, 1] # neighbour offsets along one axis
+neighbour_coord_triple = [neighbour_coord] * 3 # three such offsets
+all_neighbours = product(*neighbour_coord_triple) # iterator for neighbour offset triples
+neighbours = [np.array(x, dtype=int) for x in all_neighbours] # convert to a list of numpy integer arrays
 
 def brute_force():
     energy, virial, wgt = 0, 0, 0
-    for i, j in pairs:
-        Δr = pos[j] - pos[i]
-        Δr = Δr - np.where(Δr > esby2, es, 0) + np.where(Δr < -esby2, es, 0)
-        rsq = np.sum(Δr**2)
-        if rsq < 1:
-            r = np.sqrt(rsq)
-            energy += (A/2)*(1-r)**2
-            virial += A*r*(1-r)
-            wgt += 1/4*(1-r)**2 # note normalisation
-    return 3*rho/2 + energy/vol, rho + virial/(3*vol), 2*wgt/npart
+    for i in box:
+        for j in box:
+            if i < j:
+                Δr = pos[j] - pos[i]
+                Δr = Δr - np.where(Δr > esby2, es, 0) + np.where(Δr < -esby2, es, 0)
+                rsq = np.sum(Δr**2)
+                if rsq < 1:
+                    r = np.sqrt(rsq)
+                    energy += (A/2)*(1-r)**2
+                    virial += A*r*(1-r)
+                    wgt += 1/4*(1-r)**2 # note normalisation
+    return 3*npart/(2*vol) + energy/vol, npart/vol + virial/(3*vol), 2*wgt/npart
 
 def energy_pressure_mean_wld():
     wld[:] = 0 # has side effect of building the wld array
     energy, virial = 0, 0
-    for i in range(npart):
+    for i in box:
         pos_i = pos[i]
         cell = (pos_i/cell_size).astype(int)
         for neighbour in neighbours:
@@ -107,7 +112,7 @@ def energy_pressure_mean_wld():
                         wgt = 1/4*(1-r)**2 # note normalisation
                         wld[i] += wgt
                         wld[j] += wgt
-    return 3*rho/2 + energy/vol, rho + virial/(3*vol), np.mean(wld)
+    return 3*npart/(2*vol) + energy/vol, npart/vol + virial/(3*vol), np.mean(wld)
 
 def part_energy(i, cell, pos_i):
     energy = 0
@@ -125,7 +130,7 @@ def part_energy(i, cell, pos_i):
 
 def tot_part_energy(): # test of above
     energy = 3*npart/2
-    for i in range(npart):
+    for i in box:
         cell = (pos[i]/cell_size).astype(int) # calculate cell coordinates
         energy += 0.5*part_energy(i, cell, pos[i])
     return energy/vol
@@ -187,6 +192,8 @@ i = np.arange(nbins)
 rmid = (i + 0.5) * Δg # midpoint
 vshell = 4*np.pi/3 * (3*i**2 + 3*i + 1) * Δg**3 # volume of shell around midpoint
 
+pairs = [(i, j) for i in box for j in box if i < j]
+
 for i, j in pairs:
     Δr = pos[j] - pos[i]
     Δr = Δr - np.where(Δr > esby2, es, 0) + np.where(Δr < -esby2, es, 0)
@@ -230,6 +237,7 @@ if args.header is not None:
             f.write('# opts: ' + ' '.join(run_opts) + '\n')
             f.write('# reduce data for: stats\n')
             f.write('# concatenate data for: ' + ', '.join(concats) + '\n')
+            f.write(f'# derived parameters: npart = {npart}, vol = {vol}, rho = {npart/vol}')
 
 if args.verbose:
     print('data >', ', '.join(files))
