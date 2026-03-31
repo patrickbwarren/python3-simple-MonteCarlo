@@ -238,7 +238,7 @@ if args.header is not None:
             f.write('# opts: ' + ' '.join(run_opts) + '\n')
             f.write('# reduce data for: stats\n')
             f.write('# concatenate data for: ' + ', '.join(concats) + '\n')
-            f.write(f'# derived parameters: npart = {npart}, vol = {vol}, rho = {npart/vol}')
+            f.write(f'# derived parameters: npart = {npart}, vol = {vol}, rho = {npart/vol}\n')
 
     if args.verbose:
         print('data >', ', '.join(files))
