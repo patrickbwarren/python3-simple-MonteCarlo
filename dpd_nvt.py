@@ -39,7 +39,7 @@ parser.add_argument('-r', '--rho', default=3.0, type=float, help='density, defau
 parser.add_argument('-A', '--A', default=25.0, type=float, help='repulsion amplitude, default 25.0')
 parser.add_argument('--npart', default='rho*vol', help='number of particles, default computed')
 parser.add_argument('--nmove', default='npart', help='number of MC moves per sweep, default npart')
-parser.add_argument('--nequil', default=10, type=int, help='number of equilibration sweeps, default 10')
+parser.add_argument('--nequil', default='10', help='number of equilibration sweeps, default 10')
 parser.add_argument('--delta', default=0.2, type=float, help='trial displacement, default 0.2')
 parser.add_argument('--rmax', default=4.0, type=float, help='max radius for rdf, default 4.0')
 parser.add_argument('--nbins', default=80, type=int, help='number of bins in rdf, default 80')
@@ -166,7 +166,7 @@ for sweep in range(nequil): # do a number of sweeps of nmove trial moves
     if args.verbose:
         print('equilibration: {:3d} {:0.5f} {:0.5f}'.format(sweep, e, a))
 
-final_stats = [e, p, w, a]
+stats = dict(energy=e, pressure=p, wmean=w, accrat=a)
 
 if args.verbose > 1:
     test_energy()
@@ -179,7 +179,8 @@ def even_parity(cell): # used to implement checkboard pattern
 origin_pos = rng.uniform(0, 1, size=3) # random insertion point in first cell
 insert_eng = np.array([part_energy(npart, cell, origin_pos+np.array(cell)) for cell in contents if even_parity(cell)])
 mu = -np.log(vol*np.mean(np.exp(-insert_eng))/(npart+1)) # insert_eng collects the insertion energies
-final_stats.append(mu)
+
+stats['mu'] = mu
 
 # pair distribution functions (totals)
 
@@ -219,8 +220,8 @@ if args.header is not None:
     stats_file = f'{args.header}__{pid:d}_stats.dat'
     fmt_string = '\t'.join([ff, ss]) + '\n'
     with open(stats_file, 'w') as f:
-        for i, code in enumerate('epwam'):
-            f.write(fmt_string.format(final_stats[i], code))
+        for k in stats:
+            f.write(fmt_string.format(stats[k], k))
 
     rdfs_file = f'{args.header}__{pid:d}_rdfs.dat'
     fmt_string = '\t'.join([dd, dd, ff, dd, ff, ff]) + '\n'
@@ -239,7 +240,7 @@ if args.header is not None:
             f.write('# concatenate data for: ' + ', '.join(concats) + '\n')
             f.write(f'# derived parameters: npart = {npart}, vol = {vol}, rho = {npart/vol}')
 
-if args.verbose:
-    print('data >', ', '.join(files))
+    if args.verbose:
+        print('data >', ', '.join(files))
 
 # end of code

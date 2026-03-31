@@ -47,7 +47,7 @@ class ExtendedArgumentParser(argparse.ArgumentParser):
         group.add_argument(f'--no-{opt}', dest=opt, action='store_false', help=help_string)
         self.set_defaults(**{opt:default})
 
-parser = argparse.ExtendedArgumentParser(description=__doc__)
+parser = ExtendedArgumentParser(description=__doc__)
 parser.add_argument('--header', default=None, help='set the name of the output files')
 parser.add_argument('--seed', default=12345, type=int, help='the RNG seed, default 12345')
 parser.add_argument('--process', default=0, type=int, help='process number, default 0')
@@ -57,7 +57,7 @@ parser.add_argument('-r', '--rho', default=3.0, type=float, help='density, defau
 parser.add_argument('-A', '--A', default=25.0, type=float, help='repulsion amplitude, default 25.0')
 parser.add_argument('--npart', default='rho*vol', help='number of particles, default computed')
 parser.add_argument('--nmove', default='npart', help='number of MC moves per sweep, default npart')
-parser.add_argument('--nequil', default=10, type=int, help='number of equilibration sweeps, default 10')
+parser.add_argument('--nequil', default='10', help='number of equilibration sweeps, default 10')
 parser.add_argument('--delta', default=0.2, type=float, help='trial displacement, default 0.2')
 parser.add_argument('--nbins', default=80, type=int, help='number of bins in density profile, default 40')
 parser.add_bool_arg('--walls', short_opt='-w', default=True, help='include walls')
@@ -186,7 +186,7 @@ for sweep in range(nequil): # do a number of sweeps of nmove trial moves
     if args.verbose:
         print('equilibration: {:3d} {:0.5f} {:0.5f}'.format(sweep, e, a))
 
-final_stats = [e, p, a]
+stats = dict(energy=e, pxx=p[0], pyy=p[1], pzz=p[2], deltap=(p[2]-0.5*(p[0]+p[1])), accrat=a)
 
 if args.verbose > 1:
     test_energy()
@@ -212,12 +212,8 @@ if args.header is not None:
     stats_file = f'{args.header}__{pid:d}_stats.dat'
     fmt_string = '\t'.join([ff, ss]) + '\n'
     with open(stats_file, 'w') as f:
-        for i, code in enumerate('epa'):
-            if code == 'p':
-                for j, dirn in enumerate('xyz'):
-                    f.write(fmt_string.format(final_stats[i][j], f'{code}{dirn}{dirn}'))
-            else:
-                f.write(fmt_string.format(final_stats[i], code))
+        for k in stats:
+            f.write(fmt_string.format(stats[k], k))
 
     zprof_file = f'{args.header}__{pid:d}_zprof.dat'
     fmt_string = '\t'.join([ff, ff]) + '\n'
@@ -234,7 +230,7 @@ if args.header is not None:
             f.write('# reduce data for: stats, zprof\n')
             f.write(f'# derived parameters: npart = {npart}, vol = {vol}, rho = {npart/vol}')
 
-if args.verbose:
-    print('data >', ', '.join(files))
+    if args.verbose:
+        print('data >', ', '.join(files))
 
 # end of code
