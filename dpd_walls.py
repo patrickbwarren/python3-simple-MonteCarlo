@@ -85,8 +85,8 @@ nmove = eval_kM_replace(args.nmove)
 nequil = eval_kM_replace(args.nequil)
 
 pos = rng.uniform(zlo, zhi, size=(npart, 3)) # initialise particle positions between walls
-pos[:, 0] = rng.uniform(0, es, size=npart)
-pos[:, 1] = rng.uniform(0, es, size=npart)
+pos[:, 0] = rng.uniform(0, es, size=npart) # reinitialise the (x, y) positions as unbounded
+pos[:, 1] = rng.uniform(0, es, size=npart) # this was a bug in the previous version
 
 ncell = int(es) # number of cells along one axis
 cell_size = es / ncell # cell size
