@@ -14,7 +14,7 @@
 #
 # Before first use, compile the Cython module:
 #
-#   python setup_dpd.py build_ext --inplace
+#   python setup_dpd_nvt.py build_ext --inplace
 #
 # Copyright (c) 2026 Patrick B Warren <patrick.warren@stfc.ac.uk>
 # Licence: GPLv3+
@@ -30,7 +30,7 @@ except ImportError:
     raise ImportError(
         "Cython extension not found.\n"
         "Please compile it first with:\n"
-        "    python setup_dpd.py build_ext --inplace"
+        "    python setup_dpd_nvt.py build_ext --inplace"
     )
 
 # ---------------------------------------------------------------------------

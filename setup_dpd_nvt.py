@@ -1,9 +1,9 @@
 """
-setup_dpd.py  –  Build script for the DPD NVT Cython extension.
+setup_dpd_nvt.py  –  Build script for the DPD NVT Cython extension.
 
 Usage
 -----
-    python setup_dpd.py build_ext --inplace
+    python setup_dpd_nvt.py build_ext --inplace
 
 This produces  dpd_nvt_cy.cpython-3X-x86_64-linux-gnu.so  (or equivalent)
 in the current directory, which dpd_nvt_main.py imports automatically.
