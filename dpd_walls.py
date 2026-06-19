@@ -85,6 +85,8 @@ nmove = eval_kM_replace(args.nmove)
 nequil = eval_kM_replace(args.nequil)
 
 pos = rng.uniform(zlo, zhi, size=(npart, 3)) # initialise particle positions between walls
+pos[:, 0] = rng.uniform(0, es, size=npart)
+pos[:, 1] = rng.uniform(0, es, size=npart)
 
 ncell = int(es) # number of cells along one axis
 cell_size = es / ncell # cell size
@@ -191,7 +193,7 @@ wall_energy = uniform_wall_energy if args.uniform else vanilla_wall_energy
 
 # This is the actual Monte-Carlo algorithm
 
-for sweep in range(nequil): # do a number of sweeps of nmove trial moves
+for sweep in range(nequil): # do nequil sweeps of nmove trial moves
     naccept = 0
     parts = rng.integers(0, npart, size=nmove)
     disps = rng.normal(0.0, ΔR, size=(nmove, 3))
@@ -212,7 +214,7 @@ for sweep in range(nequil): # do a number of sweeps of nmove trial moves
             contents[tuple(new_cell)].add(i)
     (e, p), a = energy_pressure(), naccept/nmove
     if args.verbose:
-        print('equilibration: {:3d} {:0.5f} {:0.5f}'.format(sweep, e, a))
+        print('equilibration: {:3d} {:0.5f} {:0.5f} {:0.5f}'.format(sweep, e, np.mean(p), a))
 
 pxx, pyy, pzz = p # diagonal components of pressure tensor
 
