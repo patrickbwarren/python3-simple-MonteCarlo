@@ -40,7 +40,7 @@ setup(
             "language_level": "3",
             "boundscheck":    False,
             "wraparound":     False,
-            "cdivision":      True,
+            "cdivision":      False,  # kept False — floor-based wrap used instead
             "nonecheck":      False,
             "initializedcheck": False,
         },

@@ -1,7 +1,7 @@
 # cython: language_level=3
 # cython: boundscheck=False
 # cython: wraparound=False
-# cython: cdivision=True
+# cython: cdivision=False
 # cython: nonecheck=False
 # cython: initializedcheck=False
 #
@@ -35,6 +35,17 @@ cdef inline double mic(double dx, double es, double esby2) nogil:
     if dx >  esby2: return dx - es
     if dx < -esby2: return dx + es
     return dx
+
+# ---------------------------------------------------------------------------
+# Floor-based periodic wrap for a coordinate (always non-negative)
+# ---------------------------------------------------------------------------
+cdef inline double wrap(double x, double es) nogil:
+    """Wrap x into [0, es) using floor division — safe for negative x.
+    Used in preference to the % operator: with cdivision=False Cython's %
+    already matches Python semantics (non-negative for positive divisor),
+    but this explicit form is kept for clarity and consistency with the
+    dpd_walls_cy module, and is robust even if cdivision is ever toggled."""
+    return x - floor(x / es) * es
 
 # ---------------------------------------------------------------------------
 # Cell-list helpers
@@ -225,15 +236,9 @@ def mc_sweep(
                     old_energy += (A * 0.5) * (1.0 - r) * (1.0 - r)
 
         # ---- trial position (periodic wrap) -------------------------------
-        # Use floor-based wrap: guaranteed non-negative for any sign of
-        # displacement. C's fmod (used by % with cdivision=True on doubles)
-        # returns a negative result when the numerator is negative.
-        new_px = old_px + disps[m, 0]
-        new_px = new_px - floor(new_px / es) * es
-        new_py = old_py + disps[m, 1]
-        new_py = new_py - floor(new_py / es) * es
-        new_pz = old_pz + disps[m, 2]
-        new_pz = new_pz - floor(new_pz / es) * es
+        new_px = wrap(old_px + disps[m, 0], es)
+        new_py = wrap(old_py + disps[m, 1], es)
+        new_pz = wrap(old_pz + disps[m, 2], es)
         new_cx = int(new_px / cell_size) % ncell
         new_cy = int(new_py / cell_size) % ncell
         new_cz = int(new_pz / cell_size) % ncell
